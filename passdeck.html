@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PassDeck — Satellite Pass Predictor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --bg:#0B0E11;
+    --panel:#12161B;
+    --panel-2:#171C22;
+    --line:#232A32;
+    --text:#E8ECEF;
+    --muted:#6B7684;
+    --amber:#FFB020;
+    --teal:#3ED6B5;
+    --red:#FF6B6B;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:32px 20px 80px;}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:28px;border-bottom:1px solid var(--line);padding-bottom:20px;}
+  .brand{font-family:'Space Mono',monospace;font-weight:700;font-size:22px;letter-spacing:0.5px;}
+  .brand span{color:var(--teal);}
+  .tagline{font-family:'Space Mono',monospace;color:var(--muted);font-size:12px;letter-spacing:1px;text-transform:uppercase;}
+
+  .grid{display:grid;grid-template-columns:340px 1fr;gap:20px;}
+  @media (max-width:820px){.grid{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:20px;}
+  .panel h2{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:0 0 16px;}
+
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-family:'Space Mono',monospace;}
+  select,input,textarea{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:9px 10px;border-radius:4px;font-family:'Inter',sans-serif;font-size:13px;margin-bottom:14px;
+  }
+  textarea{font-family:'Space Mono',monospace;font-size:11px;resize:vertical;min-height:64px;}
+  select:focus,input:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:1px;border-color:var(--teal);}
+
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .locbtn{background:transparent;border:1px solid var(--line);color:var(--teal);padding:8px;border-radius:4px;font-size:12px;cursor:pointer;width:100%;margin-bottom:14px;font-family:'Space Mono',monospace;}
+  .locbtn:hover{border-color:var(--teal);}
+
+  button.primary{
+    width:100%;background:var(--teal);color:#0B0E11;border:none;padding:12px;border-radius:4px;
+    font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:0.5px;cursor:pointer;text-transform:uppercase;
+  }
+  button.primary:hover{background:#5EEAD4;}
+  button.primary:disabled{background:var(--muted);cursor:not-allowed;}
+
+  .status{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-top:10px;min-height:14px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);}
+  td{padding:10px;border-bottom:1px solid var(--line);font-family:'Space Mono',monospace;font-size:12px;}
+  tr:hover td{background:var(--panel-2);cursor:pointer;}
+  tr.selected td{background:#1A2229;}
+  .elev-good{color:var(--teal);}
+  .elev-ok{color:var(--amber);}
+  .elev-low{color:var(--muted);}
+
+  .empty{color:var(--muted);font-size:13px;padding:30px 10px;text-align:center;font-family:'Space Mono',monospace;}
+
+  .skyplot-wrap{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:18px;}
+  canvas{background:var(--panel-2);border-radius:6px;}
+  .pass-detail{font-family:'Space Mono',monospace;font-size:12px;line-height:2;color:var(--muted);}
+  .pass-detail b{color:var(--text);}
+
+  footer{margin-top:40px;font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="brand">Pass<span>Deck</span></div>
+      <div class="tagline">Sky-plot pass predictor for small ops teams</div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Satellite</h2>
+      <label for="satSelect">Preset</label>
+      <select id="satSelect">
+        <option value="custom">— Paste custom TLE —</option>
+        <option value="iss">ISS (ZARYA)</option>
+        <option value="noaa15">NOAA 15</option>
+        <option value="noaa18">NOAA 18</option>
+      </select>
+      <label for="tle">TLE (two lines)</label>
+      <textarea id="tle" placeholder="1 25544U 98067A   ...&#10;2 25544  51.6400 ..."></textarea>
+
+      <h2 style="margin-top:22px;">Ground Station</h2>
+      <button class="locbtn" id="useLoc">Use my location</button>
+      <div class="row2">
+        <div>
+          <label for="lat">Latitude</label>
+          <input id="lat" type="number" step="0.0001" value="37.3861">
+        </div>
+        <div>
+          <label for="lon">Longitude</label>
+          <input id="lon" type="number" step="0.0001" value="-121.8267">
+        </div>
+      </div>
+      <label for="minEl">Min elevation (°)</label>
+      <input id="minEl" type="number" value="10" min="0" max="89">
+      <label for="days">Look-ahead (days)</label>
+      <input id="days" type="number" value="3" min="1" max="7">
+
+      <button class="primary" id="compute">Compute Passes</button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Upcoming Passes</h2>
+      <div id="passList"><div class="empty">Set a satellite and ground station, then compute passes.</div></div>
+
+      <div id="detailArea"></div>
+    </div>
+  </div>
+
+  <footer>Orbital propagation via SGP4 (satellite.js). Elevation ≥ 10° generally usable for most ground stations; verify against your antenna's actual horizon mask.</footer>
+</div>
+
+<script>
+const PRESETS = {
+  iss: {
+    l1: "1 25544U 98067A   24280.54462674  .00016717  00000-0  30456-3 0  9995",
+    l2: "2 25544  51.6400 210.0480 0006317  35.4864  75.7825 15.50318898472617"
+  },
+  noaa15: {
+    l1: "1 25338U 98030A   24280.50000000  .00000180  00000-0  10123-3 0  9990",
+    l2: "2 25338  98.7200 210.5000 0010800  90.0000 270.2000 14.25920000  1234"
+  },
+  noaa18: {
+    l1: "1 28654U 05018A   24280.50000000  .00000180  00000-0  10123-3 0  9991",
+    l2: "2 28654  99.0500 200.0000 0014000  95.0000 265.0000 14.12500000  1235"
+  }
+};
+
+const satSelect = document.getElementById('satSelect');
+const tleBox = document.getElementById('tle');
+const statusEl = document.getElementById('status');
+let selectedPass = null;
+
+satSelect.addEventListener('change', () => {
+  const v = satSelect.value;
+  if (v === 'custom') { tleBox.value = ''; return; }
+  const p = PRESETS[v];
+  tleBox.value = p.l1 + '\n' + p.l2;
+});
+satSelect.value = 'iss';
+tleBox.value = PRESETS.iss.l1 + '\n' + PRESETS.iss.l2;
+
+document.getElementById('useLoc').addEventListener('click', () => {
+  if (!navigator.geolocation) { statusEl.textContent = 'Geolocation not available in this browser.'; return; }
+  statusEl.textContent = 'Requesting location...';
+  navigator.geolocation.getCurrentPosition(pos => {
+    document.getElementById('lat').value = pos.coords.latitude.toFixed(4);
+    document.getElementById('lon').value = pos.coords.longitude.toFixed(4);
+    statusEl.textContent = 'Location set.';
+  }, err => {
+    statusEl.textContent = 'Could not get location (' + err.message + ').';
+  });
+});
+
+function deg2rad(d){ return d * Math.PI / 180; }
+function rad2deg(r){ return r * 180 / Math.PI; }
+
+function computePasses() {
+  const lines = tleBox.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  if (lines.length < 2) { statusEl.textContent = 'Need a valid two-line TLE.'; return; }
+  if (typeof satellite === 'undefined') { statusEl.textContent = 'Orbital propagation library failed to load — check your network/connectivity.'; return; }
+
+  let satrec;
+  try {
+    satrec = satellite.twoline2satrec(lines[0], lines[1]);
+  } catch (e) {
+    statusEl.textContent = 'Could not parse TLE: ' + e.message;
+    return;
+  }
+
+  const lat = parseFloat(document.getElementById('lat').value);
+  const lon = parseFloat(document.getElementById('lon').value);
+  const minEl = parseFloat(document.getElementById('minEl').value);
+  const days = parseInt(document.getElementById('days').value);
+  const observerGd = { longitude: deg2rad(lon), latitude: deg2rad(lat), height: 0.15 };
+
+  const stepSec = 15;
+  const totalSec = days * 86400;
+  const start = new Date();
+  const passes = [];
+  let inPass = false;
+  let current = null;
+
+  for (let t = 0; t <= totalSec; t += stepSec) {
+    const date = new Date(start.getTime() + t * 1000);
+    const posVel = satellite.propagate(satrec, date);
+    if (!posVel.position) continue;
+    const gmst = satellite.gstime(date);
+    const posEcf = satellite.eciToEcf(posVel.position, gmst);
+    const look = satellite.ecfToLookAngles(observerGd, posEcf);
+    const elevDeg = rad2deg(look.elevation);
+    const azDeg = rad2deg(look.azimuth);
+
+    if (elevDeg >= minEl) {
+      if (!inPass) {
+        inPass = true;
+        current = { aos: date, maxEl: elevDeg, maxElTime: date, track: [] };
+      }
+      if (elevDeg > current.maxEl) { current.maxEl = elevDeg; current.maxElTime = date; }
+      current.track.push({ t: date, az: azDeg, el: elevDeg });
+    } else if (inPass) {
+      current.los = date;
+      current.durationSec = (current.los - current.aos) / 1000;
+      passes.push(current);
+      inPass = false;
+      current = null;
+      if (passes.length >= 40) break;
+    }
+  }
+
+  renderPasses(passes);
+}
+
+function fmtTime(d) {
+  return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+function fmtDur(sec) {
+  const m = Math.floor(sec/60), s = Math.round(sec%60);
+  return m + 'm ' + s + 's';
+}
+
+function renderPasses(passes) {
+  const list = document.getElementById('passList');
+  const detail = document.getElementById('detailArea');
+  detail.innerHTML = '';
+  if (!passes.length) {
+    list.innerHTML = '<div class="empty">No passes found above the elevation threshold in this window. Try lowering min elevation or extending look-ahead.</div>';
+    statusEl.textContent = 'Done — 0 passes.';
+    return;
+  }
+  statusEl.textContent = `Done — ${passes.length} pass(es) found.`;
+
+  let html = '<table><thead><tr><th>AOS</th><th>Max El.</th><th>Duration</th><th>LOS</th></tr></thead><tbody>';
+  passes.forEach((p, i) => {
+    const cls = p.maxEl >= 40 ? 'elev-good' : (p.maxEl >= 20 ? 'elev-ok' : 'elev-low');
+    html += `<tr data-i="${i}"><td>${fmtTime(p.aos)}</td><td class="${cls}">${p.maxEl.toFixed(1)}°</td><td>${fmtDur(p.durationSec)}</td><td>${fmtTime(p.los)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  list.innerHTML = html;
+
+  list.querySelectorAll('tr[data-i]').forEach(row => {
+    row.addEventListener('click', () => {
+      list.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+      row.classList.add('selected');
+      showPassDetail(passes[parseInt(row.dataset.i)]);
+    });
+  });
+
+  showPassDetail(passes[0]);
+  list.querySelector('tr[data-i="0"]').classList.add('selected');
+}
+
+function showPassDetail(p) {
+  const detail = document.getElementById('detailArea');
+  detail.innerHTML = `
+    <div class="skyplot-wrap">
+      <canvas id="skyplot" width="260" height="260"></canvas>
+      <div class="pass-detail">
+        <div><b>AOS</b> ${fmtTime(p.aos)}</div>
+        <div><b>Max elevation</b> ${p.maxEl.toFixed(1)}° at ${fmtTime(p.maxElTime)}</div>
+        <div><b>LOS</b> ${fmtTime(p.los)}</div>
+        <div><b>Duration</b> ${fmtDur(p.durationSec)}</div>
+      </div>
+    </div>`;
+  drawSkyPlot(p.track);
+}
+
+function drawSkyPlot(track) {
+  const canvas = document.getElementById('skyplot');
+  const ctx = canvas.getContext('2d');
+  const cx = 130, cy = 130, r = 110;
+  ctx.clearRect(0,0,260,260);
+
+  ctx.strokeStyle = '#232A32';
+  ctx.fillStyle = '#6B7684';
+  ctx.font = '10px monospace';
+  [0,30,60,90].forEach(elRing => {
+    const rr = r * (1 - elRing/90);
+    ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI*2); ctx.stroke();
+  });
+  ctx.beginPath(); ctx.moveTo(cx-r,cy); ctx.lineTo(cx+r,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,cy-r); ctx.lineTo(cx,cy+r); ctx.stroke();
+  ctx.fillText('N', cx-4, cy-r-4);
+  ctx.fillText('S', cx-4, cy+r+14);
+  ctx.fillText('E', cx+r+4, cy+4);
+  ctx.fillText('W', cx-r-16, cy+4);
+
+  function toXY(az, el) {
+    const rr = r * (1 - el/90);
+    const a = deg2rad(az);
+    return [cx + rr*Math.sin(a), cy - rr*Math.cos(a)];
+  }
+
+  ctx.strokeStyle = '#3ED6B5';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  track.forEach((pt, i) => {
+    const [x,y] = toXY(pt.az, pt.el);
+    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  if (track.length) {
+    const [sx,sy] = toXY(track[0].az, track[0].el);
+    const [ex,ey] = toXY(track[track.length-1].az, track[track.length-1].el);
+    ctx.fillStyle = '#FFB020';
+    ctx.beginPath(); ctx.arc(sx,sy,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#FF6B6B';
+    ctx.beginPath(); ctx.arc(ex,ey,4,0,Math.PI*2); ctx.fill();
+  }
+}
+
+document.getElementById('compute').addEventListener('click', computePasses);
+</script>
+</body>
+</html>
